@@ -77,6 +77,11 @@ function _repo_exists() {
   fi
 }
 
+function _is_elf_executable() {
+  local file=$1
+  readelf -S $file >& /dev/null
+}
+
 function _search() {
   _repo_exists
   # show tag of latest release
@@ -119,25 +124,31 @@ Consider using a more specific asset filtering PATTERN than '${__pattern:-".*"}'
     curl --silent --location --output ${asset_path} ${asset_url}
   fi
 
-  #FIXME: handle file vs directory tarball; tarbarll must be downloaded to
-  # assets-dir to allow inspection without downloading twice.
-  case ${asset_url} in
-    *.txz) _extract_tar --xz;;
-    *.gz) _extract_tar --gzip;;
-    *.deb)
-      # debian archives offers no way to install from remote URL as far as I am
-      # aware of. Thus we must download archive to disk
-      echoerr "Installing Debian archive: '${asset_path}'"
-      apt install -y ${asset_path}
-      ;;
-  esac
+  if _is_elf_executable ${asset_path}; then
+    _install_file ${__repository##*/}
+  else
+    case ${asset_url} in
+      *.txz) _extract_tar --xz;;
+      *.gz) _extract_tar --gzip;;
+      *.deb)
+	# debian archives offers no way to install from remote URL as far as I am
+	# aware of. Thus we must download archive to disk
+	echoerr "Installing Debian archive: '${asset_path}'"
+	apt install -y ${asset_path}
+	;;
+    esac
+  fi
 }
 
 function _extract_tar() {
   local tar_filter=$1
-  echo ${asset_path}
   install --verbose --directory ${GHI_INSTALL_PREFIX}
-  tar --verbose --extract --file ${asset_path} ${tar_filter} --directory ${GHI_INSTALL_PREFIX}
+  tar --verbose --extract --file ${asset_path} ${tar_filter} --exclude={LICENSE,README.md} --directory ${GHI_INSTALL_PREFIX}
+}
+
+function _install_file() {
+  local filename=$1
+  install --verbose --no-target-directory ${asset_path} ${GHI_INSTALL_PREFIX}/$filename
 }
 
 while [ $# -gt 0 ]; do
